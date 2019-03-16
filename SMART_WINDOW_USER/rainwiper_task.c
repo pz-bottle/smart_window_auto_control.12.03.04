@@ -55,43 +55,31 @@ void rainwiper_task(void *parameter)
 	uint8_t dir_right = 0;
 	while(1)
 	{
+		printf("rainwipper task running\r\n");
 		if(!(GPIOA->IDR&(1<<0)))
 		{
 			//10 shang 11 xiao
 			//上
 			dir_left = 1;
-//			taskENTER_CRITICAL();
-//			set_rainwiper_stop_right(0);
-//			taskEXIT_CRITICAL();
-//			vTaskDelay(pdMS_TO_TICKS(500));
 		}
 		if(!(GPIOF->IDR&(1<<6)))
 		{
 			//下
 			dir_left = 0;
-//			taskENTER_CRITICAL();
-//			set_rainwiper_stop_right(0);
-//			taskEXIT_CRITICAL();
-//			vTaskDelay(pdMS_TO_TICKS(500));
+ 
 		}
 		if(!(GPIOC->IDR&(1<<7)))
 		{
 			//10 shang 11 xiao
 			//上
 			dir_right = 1;
-//			taskENTER_CRITICAL();
-//			set_rainwiper_stop_right(0);
-//			taskEXIT_CRITICAL();
-//		、言	vTaskDelay(pdMS_TO_TICKS(500));
+ 
 		}
 		if(!(GPIOF->IDR&(1<<4)))
 		{
 			//下
 			dir_right = 0;
-//			taskENTER_CRITICAL();
-//			set_rainwiper_stop_right(0);
-//			taskEXIT_CRITICAL();
-//			vTaskDelay(pdMS_TO_TICKS(500));
+ 
 		}
 		if(dir_right)
 		{
@@ -103,7 +91,6 @@ void rainwiper_task(void *parameter)
 			//printf("down\r\n");
 			set_rainwiper_down_right(pca9685_pwm_val);
 		}
-		
 		
 		if(dir_left)
 		{

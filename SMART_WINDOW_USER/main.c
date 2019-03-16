@@ -1,9 +1,21 @@
 #include "main_task.h"
-int flag = 0;
 int main(void)
 {
 	hardware_init();
 	
+//	while(1)
+//	{
+//		if(gsm_call("10086") != 0)
+//		{
+//			printf("打电话识别\r\n");
+//		}else
+//		{
+//			printf("打电话成功\r\n");
+//		}
+//		delay_ms(1000);
+//		delay_ms(1000);
+//		delay_ms(1000);
+//	}
 ////	while(1)
 ////	{
 ////		delay_ms(500);

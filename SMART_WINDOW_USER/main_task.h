@@ -36,7 +36,7 @@
 #include "stealing_task.h"
 extern void hardware_init(void);
 extern void main_task(void*paremeter);
-extern bool is_operatable_screen(void);
+extern bool keyboard_is_locked(void);
 extern void timer1_callback(void*parameter);
 extern bool is_airpolution(double valug);
 static int alarm_tempe = 999;//报警温度 99.9 默认值 程序启动后，在 scankey_task 中会初始化这个变量

@@ -1,7 +1,50 @@
 #include "main_task.h"
 
+static volatile uint8_t windows_self_operation_flag=0; 
+#define WINDOW_SELF_OPERATION_MASK  0x7
+#define TOXIC_SET_WINDOW_SELF_OPERATION 	(0x1<<0)
+#define RAIN_SET_WINDOW_SELF_OPERATION  	(0x1<<1)
+#define WATCHDOG_TASK_SET_WINDOW_SELF_OPERATION (0x1<<2)
+void set_windows_self_operation_flag(uint8_t val)
+{
+	taskENTER_CRITICAL();
+	{
+		windows_self_operation_flag |= val;	
+	}
+	taskEXIT_CRITICAL();
+}
+void reset_windows_self_operation_flag(uint8_t val)
+{
+	taskENTER_CRITICAL();
+	{
+		windows_self_operation_flag &= val;	
+	}
+	taskEXIT_CRITICAL();
+}
+bool get_windows_self_operation_flag(void) /*自己开、关窗的操作，设置一个标志让其他人知道*/
+{
+	return windows_self_operation_flag&WINDOW_SELF_OPERATION_MASK;
+}
 void main_task(void*paremeter)
 {
+	
+	/*一开始，先把窗户关闭*/
+	if(get_windowstatus() != WIN_CLOSE)
+	{
+		set_windows_self_operation_flag(WINDOW_SELF_OPERATION_MASK);
+		{
+			/*把窗户关闭*/
+			close_window();
+			/*等待窗户关闭完成*/
+			while(get_windowstatus() != WIN_CLOSE)        
+			{
+				vTaskDelay(pdMS_TO_TICKS(10));
+			}
+			stop_window();
+		}
+		reset_windows_self_operation_flag(~WINDOW_SELF_OPERATION_MASK);
+	}
+
 	//队列
 	xQueueHandle queue_handle;
 	TimerHandle_t timer;
@@ -83,7 +126,7 @@ void main_task(void*paremeter)
 	configASSERT(ok == pdPASS);
 	vTaskSuspend( flash_alarm_task_handle );
 	printf("flash_alarm_task_handle ok\r\n");
-	printf("all task ok\r\n");
+	printf("all task ok\r\n");	
 	
 	while(1)
 	{
@@ -94,42 +137,50 @@ void main_task(void*paremeter)
 		toxicval= toxicgas_getad(5);//adc1 a5
 		if(is_toxicgas(toxicval) == true)//发现有毒气体
 		{
-			set_flag(1);
-			dp("发现有毒气体");
-			dp("有毒气体值%d",toxicval);
-			//鸣笛报警
-			BEEP_ON;
-			set_toxic_beep_alarm_flag();//有毒气体警报标志 
-			//判断玻璃窗打开了没有
-			if(get_windowstatus() != WIN_OPEN)
+			set_windows_self_operation_flag(TOXIC_SET_WINDOW_SELF_OPERATION);/*自己打开的窗户，*/
 			{
-				//打开窗户
-				open_window();
+				VOICE_OFF;/*关语音报警*/
+				
+				dp("发现有毒气体");
+				dp("有毒气体值%d",toxicval);
+				//鸣笛报警
+				BEEP_ON;
+				set_toxic_beep_alarm_flag();//有毒气体警报标志 
+					//判断玻璃窗打开了没有
+				if(get_windowstatus() != WIN_OPEN)
+				{
+					//打开窗户
+					open_window();
+				}
+				if(get_dustwinstatus() != DUSTWIN_OPEN)
+				{
+					open_preventdustwin(0);
+				}
+				uint8_t a_ok = 0;
+				while(1)
+				{
+					vTaskDelay(pdMS_TO_TICKS(10));
+					/*等待打开窗户成功*/
+					if(get_windowstatus() == WIN_CLOSE)
+					{
+						/*停止电机*/
+						stop_window();
+						a_ok |= (0x1<<0x0);
+					}
+					if(get_dustwinstatus() == DUSTWIN_CLOSE)
+					{
+						stop_preventdustwin();
+						a_ok |= (0x1<<0x1);
+					}
+					if(a_ok == 0x3)
+					{
+						break;
+					}
+				}
+				
 			}
-			/*等待打开窗户成功*/
-			while(get_windowstatus() != WIN_OPEN)
-			{
-				vTaskDelay(pdMS_TO_TICKS(10));
-			}
-			/*停止电机*/
-			stop_window();
+			reset_windows_self_operation_flag(~TOXIC_SET_WINDOW_SELF_OPERATION);/*自己进行的窗户操作完成*/
 			
-			
-			//窗纱没有打开
-			if(get_dustwinstatus() != DUSTWIN_OPEN)
-			{
-				//打开纱窗
-				open_preventdustwin(0);
-				dp("关闭防雾窗纱中...\n");
-			}
-			//等待判断打开了没有
-			while(get_dustwinstatus() != DUSTWIN_OPEN)
-			{
-				vTaskDelay(pdMS_TO_TICKS(10));
-			}
-			/*停止电机*/
-			stop_preventdustwin();
-			set_flag(0);
 			
 		}else
 		{
@@ -182,7 +233,7 @@ void main_task(void*paremeter)
 	
 				thmsg = *(struct dht22msg*)msg.info; 
 					
-				if(is_operatable_screen())//屏幕可写
+				if(keyboard_is_locked())//
 				{
 					dp("屏幕可写");
 					show_tempe_humid_info(thmsg.tempe,thmsg.humid);
@@ -210,29 +261,32 @@ void main_task(void*paremeter)
 			}
 		}	
 		static int32_t rain_val;
+		 
 		rain_val = rain_getad(2);//adc1 通道2
-		printf("雨量值%d\r\n",rain_val);
+		printf("0000雨量值%d\r\n",rain_val  );
+		
 		if((is_rain( rain_val) == true) && (is_toxic_beep_alarm()==false))//下雨了 且没有有毒气体
 		{
-			set_flag(1);
-			dp("下雨了");
+			dp("下雨了\r\n");
 			dp("雨量值%d",  rain_val);
-			/*关闭窗户*/
-			if(get_windowstatus() != WIN_CLOSE)
+			set_windows_self_operation_flag(RAIN_SET_WINDOW_SELF_OPERATION);/*自己打开的窗户*/
 			{
-				//关闭窗户
-				close_window();
+				/*关闭窗户*/
+				if(get_windowstatus() != WIN_CLOSE)
+				{	
+					//关闭窗户
+					close_window();
+				}
+				//等待判断关闭完成了没有
+				while(get_windowstatus() != WIN_CLOSE)
+				{
+					printf("等待窗户关闭成功\r\n");
+					vTaskDelay(pdMS_TO_TICKS(10));
+				}
+				/*停止电机*/
+				stop_window();
 			}
-			//等待判断关闭完成了没有
-			while(get_windowstatus() != WIN_CLOSE)
-			{
-				printf("等待窗户关闭成功\r\n");
-				vTaskDelay(pdMS_TO_TICKS(10));
-			}
-			/*停止电机*/
-			stop_window();
-			
-			
+			reset_windows_self_operation_flag(~RAIN_SET_WINDOW_SELF_OPERATION);
 			if(is_task_suspended(rainwiper_task_handle) == true)
 			{
 				dp("启动雨刮任务");
@@ -245,6 +299,7 @@ void main_task(void*paremeter)
 			dp("设置雨刮频率为%d\r\n",rain_val);
 		}else 
 		{ 
+			 
 			if(is_task_suspended(rainwiper_task_handle) != true)
 			{
 				dp("挂起雨刮任务，关闭雨刷并复位");
@@ -258,7 +313,6 @@ void main_task(void*paremeter)
 					rainwiper_reset();
 					dp("复位成功\r\n");
 				}
-					set_flag(0);
 			}
 		}
 		
@@ -300,7 +354,8 @@ bool is_toxicgas(u32 val)
 }
 bool is_rain(int val)
 {
-	return (val < 1000);//有雨时低电平输出的
+//	return (val < 1000);//有雨时低电平输出的
+	return (val < 3300);//有雨时低电平输出的
 }
 void show_tempe_humid_info(u32 tempe,u32 humid)
 {

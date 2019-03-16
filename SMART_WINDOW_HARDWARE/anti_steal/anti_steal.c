@@ -14,6 +14,6 @@ void anti_steal_init(void)
 }
 bool anti_steal_is_danger_signal(void)
 {
-	return (GPIO_ReadInputDataBit(GPIOF, GPIO_Pin_9) == Bit_SET);/*磁控开关输出高电平代表触发？*/  
+	return (GPIO_ReadInputDataBit(GPIOF, GPIO_Pin_9) == Bit_SET);/*磁控开关输出高电平代表触发？LJW.reply:yes*/  
 }
 

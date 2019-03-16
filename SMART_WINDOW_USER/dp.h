@@ -3,7 +3,7 @@
 #include "stdio.h"
 #include "freertos.h"
 #include "task.h"
-#define __USE_DP__ 								
+//#define __USE_DP__ 								
 #ifdef __USE_DP__
 	#define dp(format,...) do{\
 		printf("line:%d file:%s ",__LINE__,__FILE__);\
