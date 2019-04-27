@@ -1,6 +1,6 @@
 #include "scankey_task.h"
 #define delay_while() vTaskDelay(pdMS_TO_TICKS(10))//ÔÚwhileÑ­»·ÖĞ¼ÓÈë²åÈëÑÓÊ±·ÀÖ¹Ò»Ö±Õ¼ÓÃCPU
-static volatile bool islock_screen = false;//ÆÁÄ»ÊÇ·ñÒÑ¾­ÉÏËø
+static volatile bool keyboard_not_locked = false;//ÆÁÄ»ÊÇ·ñÒÑ¾­ÉÏËø
 static s8 ui_menuindex = 0;
 static s8 ui_setphoneindex = 1;/*Ò»¿ªÊ¼¾ÍÖ¸Ïòµç»°ºÅÂëµÄµÚ1Î»£¬ÀıÈç£º13570574320£¬Ö´Ïò3*/
 static s8 ui_settempeindex = 0;
@@ -11,7 +11,7 @@ bool is_operatable_screen(void)//³ıÁË¼üÅÌ³ÌĞòÆäËû½ø³ÌÖ»ÄÜ»ñÈ¡ÆÁÄ»ÊÇ·ñ¿É²Ù×÷×´Ì¬º
 {
 	bool ret;
 	taskENTER_CRITICAL();
-	ret = islock_screen;
+	ret = keyboard_not_locked;
 	taskEXIT_CRITICAL();
 	return (ret == false);
 }
@@ -336,7 +336,7 @@ void scankey_task(void *parameter)
 		{
 			taskENTER_CRITICAL();
 			{				 
-				islock_screen = true;
+				keyboard_not_locked = true;
 				//²»ÔÊĞíÆäËûÏß³Ì²Ù×÷ÆÁÄ»
 				dp("¼üÅÌ³ÌĞò¶ÀÕ¼ÓĞÆÁÄ»");
 				dp("½âËø");
@@ -739,11 +739,11 @@ void scankey_task(void *parameter)
 		{
 			taskENTER_CRITICAL();
 			{
-				if(islock_screen == true)
+				if(keyboard_not_locked == true)
 				{
 					dp("¼üÅÌ³ÌĞòÊÍ·ÅÆÁÄ»");
 					//ÔÊĞíÆäËû½ø³Ì²Ù×÷ÆÁÄ»
-					islock_screen = false;
+					keyboard_not_locked = false;
 				}
 			}
 			taskEXIT_CRITICAL();
