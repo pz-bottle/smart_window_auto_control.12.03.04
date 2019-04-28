@@ -1,5 +1,4 @@
 #include "scankey_task.h"
-#define delay_while() vTaskDelay(pdMS_TO_TICKS(10))//在while循环中加入插入延时防止一直占用CPU
 static volatile bool keyboard_not_locked = false;//屏幕是否已经上锁
 static s8 ui_menuindex = 0;
 static s8 ui_setphoneindex = 1;/*一开始就指向电话号码的第1位，例如：13570574320，执向3*/
@@ -294,10 +293,77 @@ extern u32 set_alarm_tempe(u32 val);
 static bool scankey_task_had_init = false;
 extern void watchdog_for_secure_state_task(void *a);
 extern TaskHandle_t watchdog_for_secure_state_task_handle;
-TaskHandle_t scankey_task_handle;														   
+TaskHandle_t scankey_task_handle;
+enum
+{
+	KEYBOARD_LOCKED_UI=1, /*键盘上锁时的UI*/
+	FIRST_UI = KEYBOARD_LOCKED_UI,
+	MENU_UI,		/*菜单UI*/
+	SET_PHONE_UI,		/*设置报警电话UI*/
+	SET_TEMP_UI,		/*设置报警温度UI*/
+	WINDOW_OPS_UI,		/*外窗户操作UI*/
+	DUST_WIN_OPS_UI,	/*防雾霾窗户操作UI*/
+};							
+static uint8_t get_ui(void);	
+static void set_ui(int ui);
+static uint8_t xxxx_keyboardlocked_ui(void);
+static uint8_t xxxx_menu_ui(void);
+static uint8_t xxxx_dustwinops_ui(void);
+static uint8_t xxxx_windowsops_ui(void);
+static uint8_t xxxx_setphone_ui(void);
+static uint8_t xxxx_settemp_ui(void);
+bool is_digit_string_verify(char digit_string[]);
+void scankey_task_init(void);
 void scankey_task(void *parameter)
 {
-//	update_alarm_phone_tempe();
+	scankey_task_init();
+	////////////////////////////////////////////////////////////////////////////////////////////////
+	while(1)
+	{
+		/*键盘上锁后的UI*/
+		if(get_ui() == KEYBOARD_LOCKED_UI) 
+		{
+			set_ui(xxxx_keyboardlocked_ui());
+		}
+		
+		if(get_ui() == MENU_UI)
+		{
+			set_ui(xxxx_menu_ui());
+		}
+		
+		if(get_ui() == DUST_WIN_OPS_UI)
+		{
+			set_ui(xxxx_dustwinops_ui());
+		}
+		
+		if(get_ui() == WINDOW_OPS_UI)
+		{
+			set_ui(xxxx_windowsops_ui());
+		}	
+		
+		if(get_ui() == SET_PHONE_UI)
+		{
+			set_ui(xxxx_setphone_ui());
+		}
+		
+		if(get_ui() == SET_TEMP_UI)     
+		{
+			set_ui(xxxx_settemp_ui());
+		}
+		
+	}
+}
+static uint8_t __current_ui;
+static uint8_t get_ui(void)
+{
+	return __current_ui;
+}	
+static void set_ui(int ui)
+{
+	__current_ui = ui;
+}
+void scankey_task_init(void)
+{
 	LcdReset();
 	LcdClear();
 	dp("scankey_task start");
@@ -319,19 +385,49 @@ void scankey_task(void *parameter)
 		scankey_task_had_init = true;/*记一下已经初始化过了*/	
 		/*	读取保存在flash中的值,报警的电话号码	*/
 		flash_read(FLAHS_SAVE_ALARM_PHOME_ADDR, (u8*)alarmphone,12);
+		if( ! is_digit_string_verify((char*)alarmphone) )
+		{
+			snprintf((char*)alarmphone, 12, "13570574320");
+		}
 		/*	读取保存在flash中的值,报警的温度	*/
-		flash_read(FLASH_SAVE_ALARM_TEMP_ADDR, (u8*)alarmtempe, 5);       
+		flash_read(FLASH_SAVE_ALARM_TEMP_ADDR, (u8*)alarmtempe, 5);
+		if( ! is_digit_string_verify((char*)tmpalarmtempe) )
+		{
+			snprintf((char*)alarmtempe, 5, "25.0");
+		}
 		/*	扫描到变量中保存	*/
 		sscanf((char*)alarmtempe,"%f",&tmp);
 		//设置好报警温度值，以度的10倍数表示
 		set_alarm_tempe((int32_t)(tmp*10));
 	}
 	#endif
-	bool any_key_pressed;
+	set_ui(FIRST_UI);
 	dp("scankey_task_had_init ok");
+}
+static inline bool is_digit(char c)
+{
+	return (c<='9' && c>='0');
+}
+bool is_digit_string_verify(char digit_string[])
+{
+	bool result = true;
+	for(int i=0; digit_string[i]!='\0'; i++)
+	{
+		if( ! is_digit(digit_string[i]) )
+		{
+			result = false;
+			break;
+		}
+	}
+	return result;
+}
+static uint8_t xxxx_keyboardlocked_ui(void)
+{
+	bool any_key_pressed;
+	uint8_t next_ui = KEYBOARD_LOCKED_UI;
 	while(1)
 	{
-		delay_while(); 
+		vTaskDelay(pdMS_TO_TICKS(10)); 
 		if(__C)
 		{
 			taskENTER_CRITICAL();
@@ -344,397 +440,8 @@ void scankey_task(void *parameter)
 			taskEXIT_CRITICAL();
 			//显示菜单
 			dp("显示菜单");
-			ui_menu();
-			
-			static bool break1 = false;//加static防止重复分配空间
-			while(1)
-			{
-				delay_while();	
-				any_key_pressed = true;         
-				if(__K)
-				{
-					dp("K键");
-					if(is_gotosetphone())//要设置电话号码
-					{
-						//设置之前用一个临时号码变量
-						strncpy((char*)tmpalarmphone,(char*)alarmphone,12);
-						strncpy((char*)tmpalarmtempe,(char*)alarmtempe,5);
-						tmpalarmphone[11]=0;
-						tmpalarmtempe[4]=0;
-						//进入设置电话号码界面
-						ui_setphone();
-						dp("电话号码设置界面");
-						////static bool break2 = false;
-						while(1)
-						{
-							delay_while();
-							any_key_pressed = true;         
-							if(__T)
-							{
-								ui_tip_user(6,3,"<unsaved>"); 
-								dp("T键");
-								//号码位加一
-								ui_setphoneup();
-							}else if(__B)
-							{
-								ui_tip_user(6,3,"<unsaved>"); 
-								dp("B键");
-								//号码位减一
-								ui_setphonedown();
-							}else if(__L)
-							{	
-								dp("L键");
-								//光标左移一位
-								ui_setphoneprev();
-							}else if(__R)
-							{
-								
-								dp("R键");
-								//光标右移一位
-								ui_setphonenext();
-							}else if(__F)
-							{
-								dp("F键");
-								//返回上一级菜单
-								ui_menu();
-								break;
-							}else if(__K)
-							{
-								dp("K键");
-								dp("更新报警号码");
-								//显示正在更新电话号码界面
-								ui_updatephone();
-								static bool is_update_ok;
-								tmpalarmphone[11] = 0;
-								tmpalarmtempe[4] = 0;
-								//更新电话号码程序
-								update_alarm_phone_tempe();
-								is_update_ok = true;/*	总是认为更新成功	*/
-								
-								//进入设置电话号码界面
-								ui_setphone();
-								dp("电话号码设置界面");
-								
-								if(is_update_ok)
-								{
-									//保存回原变量
-									strncpy((char*)alarmphone,(char*)tmpalarmphone,12);
-									
-									dp("设置报警号码为%s\r\n",alarmphone);
-									ui_tip_user(6,3,"<saved>"); 
-								}else
-								{
-									vTaskDelay(pdMS_TO_TICKS(50));
-									ui_tip_user(6,3,"<try later!>"); 
-								}
-								
-							}else if(__C)
-							{
-								
-								dp("C键");
-								dp("上锁");
-								break1 = true;//继续跳出第一层循环
-								break;
-							}else
-								any_key_pressed = false;
-							if(any_key_pressed)
-								feed_dog_for_secure_state();
-						}
-						if(break1 == true)
-						{
-							
-							break1 = false;
-							break;
-						}
-					}else if(is_gotosettempe())//要设置报警温度
-					{
-				
-						//设置之前用一个临时号码变量
-						strncpy((char*)tmpalarmphone,(char*)alarmphone,12);
-						strncpy((char*)tmpalarmtempe,(char*)alarmtempe,5);
-						tmpalarmphone[11]=0;
-						tmpalarmtempe[4]=0; 
-						//printf("447::tmpalarmtempe::%s\r\n", tmpalarmtempe);
-						dp("报警温度设置界面");
-						//进入设置报警温度界面
-						ui_settempe();
-						//printf("451::tmpalarmtempe::%s\r\n", tmpalarmtempe);
-						////static bool break2 = false;
-						while(1)
-						{
-							delay_while();
-							any_key_pressed = true;         
-							if(__T)
-							{
-								ui_tip_user(6,3,"<unsaved>"); 
-								dp("T键");
-								//号码位加一
-								ui_settempeup();
-							}else if(__B)
-							{
-								ui_tip_user(6,3,"<unsaved>"); 
-								dp("B键");
-								//号码位减一
-								ui_settempedown();
-							}else if(__L)
-							{
-								
-								dp("L键");
-								//光标左移一位
-								ui_settempeprev();
-							}else if(__R)
-							{
-			
-								dp("R键");
-								//光标右移一位
-								ui_settempenext();
-							}else if(__F)
-							{
-								dp("F键");
-								//返回上一级菜单
-								ui_menu();
-								break1 = false;
-								break;
-							}else if(__C)
-							{
-								dp("C键");
-								dp("上锁");
-								break1 = true;//继续跳出
-								break;
-							}else if(__K)
-							{
-								dp("K键");
-								dp("更新报警温度");
-								//显示正在更新报警温度的界面
-								ui_updatetempe();
-								tmpalarmphone[11] = 0;
-								tmpalarmtempe[4] = 0;
-								static bool is_update_ok;
-								//更新报警温度到flash中保存						
-								update_alarm_phone_tempe();
-								is_update_ok = true;/*	总是认为更新成功	*/									
-								//进入设置报警温度界面
-								dp("进入报警温度设置界面");
-								ui_settempe();
-							
-								if(is_update_ok)
-								{
-									//保存新值
-									strncpy((char*)alarmtempe,(char*)tmpalarmtempe,5);
-									static double tmp;
-									sscanf((char*)alarmtempe,"%lf",&tmp);
-									//更新报警温度程序
-									set_alarm_tempe(tmp*10);
-									dp("设置报警温度为：%lf",tmp);
-									ui_tip_user(6,3,"<saved>"); 
-								}else
-								{
-									vTaskDelay(pdMS_TO_TICKS(50));
-									ui_tip_user(6,3,"<try later!>"); 
-								}
-							}else        
-							{
-								any_key_pressed = false;         
-							}
-							if(any_key_pressed)
-							{
-								feed_dog_for_secure_state();
-							}
-						}
-						if(break1 == true)
-						{
-							break1 = false;
-							break;
-						}
-					}else if(is_gotowindowops() == true)
-					{
-						dp("进入设置窗户开关界面");
-						ui_windowops();
-						while(1)
-						{
-							delay_while();
-							any_key_pressed = true;         
-							if(__L)//L键，箭头左指
-							{	
-								ui_windowopsprev();
-								if(get_windowstatus() != WIN_CLOSE)	
-								{
-									/*关窗操作*/
-									close_window();
-									while(!(__READ_L))
-									{	
-										feed_dog_for_secure_state();
-										/*等待开窗完成*/
-										if(get_windowstatus() == WIN_CLOSE)	
-										{	
-											taskENTER_CRITICAL();
-											stop_window();
-											taskEXIT_CRITICAL();							
-											break;
-										}
-										vTaskDelay(pdMS_TO_TICKS(10));
-										dp("L键未释放 val = %d val2 = %d",0,0);
-									}
-									dp("停止窗户.......................\r\n");
-									taskENTER_CRITICAL();
-									stop_window();
-									taskEXIT_CRITICAL();		
-								}									
-							}
-							else if(__R)//R键，箭头右指示 
-							{
-								ui_windowopsnext();
-	
-								if(get_windowstatus() != WIN_OPEN)
-								{
-									/*开窗操作*/
-									open_window();
-									while(!(__READ_R))
-									{	
-										feed_dog_for_secure_state();
-										/*等待开窗完成*/
-										if(get_windowstatus() == WIN_OPEN)	
-										{
-											taskENTER_CRITICAL();
-											stop_window();
-											taskEXIT_CRITICAL();
-											break;
-										}
-										vTaskDelay(pdMS_TO_TICKS(10));
-										dp("R键未释放 val = %d val2 = %d",0,0);
-									}
-									dp("停止窗户.......................\r\n");
-									taskENTER_CRITICAL();
-									stop_window();
-									taskEXIT_CRITICAL();							
-								}						
-							}
-							else if(__F)//F键，返回上一级菜单
-							{
-								dp("进入主菜单界面");
-								ui_menu();
-								break1 = false;//不继续跳出第一层循环
-								break;
-							}else if(__C)//C键，退出设置
-							{
-								break1 = true;//继续跳出第一层循环
-								break;
-							}else 
-								any_key_pressed = false;         
-							if(any_key_pressed)	
-								feed_dog_for_secure_state();
-						}           
-						if(break1 == true)
-						{
-							dp("从窗户操作界面继续跳出");
-							break;
-						}
-					}else if(is_gotodustwinops() == true)
-					{
-						//进入防雾霾窗纱操作界面
-						ui_dustwinops();
-						while(1)
-						{
-							delay_while();
-							any_key_pressed = false;         							 
-							if(__L)//L键
-							{
-								dp("箭头前指");
-								ui_dustwinopsprev();
-								if(get_dustwinstatus() != DUSTWIN_CLOSE)	
-								{
-									/*关窗操作*/
-									close_preventdustwin(0);
-									while(!(__READ_L))
-									{	
-										feed_dog_for_secure_state();
-										/*等待开窗完成*/
-										if(get_dustwinstatus() == DUSTWIN_CLOSE)	
-										{	
-											taskENTER_CRITICAL();
-											stop_preventdustwin();
-											taskEXIT_CRITICAL();							
-											break;
-										}
-										vTaskDelay(pdMS_TO_TICKS(10));
-//										dp("L键未释放 val = %d val2 = %d",val,val2);
-									}
-									dp("停止窗户.......................\r\n");
-									taskENTER_CRITICAL();
-									stop_preventdustwin();
-									taskEXIT_CRITICAL();		
-								}					
-							}else if(__R)
-							{
-								dp("箭头后指");
-								ui_dustwinopsnext();
-								if(get_dustwinstatus() != DUSTWIN_OPEN)
-								{
-									/*开窗操作*/
-									open_preventdustwin(0);
-									while(!(__READ_R))
-									{	
-										feed_dog_for_secure_state();
-										/*等待开窗完成*/
-										if(get_dustwinstatus() == DUSTWIN_OPEN)	
-										{
-											taskENTER_CRITICAL();
-											stop_preventdustwin();
-											taskEXIT_CRITICAL();
-											break;
-										}
-										vTaskDelay(pdMS_TO_TICKS(10));
-										//dp("R键未释放 val = %d val2 = %d",val,val2);
-									}
-									dp("停止窗户.......................\r\n");
-									taskENTER_CRITICAL();
-									stop_preventdustwin();
-									taskEXIT_CRITICAL();							
-								}						
-								
-							}else if(__F)
-							{
-								//返回上一级菜单
-								ui_menu();
-								dp("返回上一级菜单");
-								break1 = false;
-								break;
-							}else if(__C)
-							{
-								//键盘上锁
-								break1 = true;
-								break;
-							}else 
-								any_key_pressed = false;         
-							if(any_key_pressed)	
-								feed_dog_for_secure_state();
-						}
-						if(break1 == true)
-						{
-							dp("继续跳出");
-							break;
-						}
-					}
-				}else if(__T)
-				{
-					dp("T键");
-					//上一个选项
-					ui_menuprev();
-				}else if(__B)
-				{
-					dp("B键");
-					//下一个选项
-					ui_menunext();  
-				}else if(__C)
-				{
-					dp("C键");
-					dp("键盘上锁");
-					break;//返回到键盘上锁之前的状态
-				}else 
-					any_key_pressed = false;         
-				if(any_key_pressed)	
-					feed_dog_for_secure_state();
-			}
+		    next_ui = MENU_UI;
+			break;
 		}else 
 		{
 			taskENTER_CRITICAL();
@@ -749,5 +456,407 @@ void scankey_task(void *parameter)
 			taskEXIT_CRITICAL();
 		}
 	}
+	return next_ui;
 }
+static uint8_t xxxx_menu_ui(void)
+{
+	bool any_key_pressed;
+	uint8_t next_ui = MENU_UI;
+	ui_menu();
+	static bool break1 = false;//加static防止重复分配空间
+	while(1)
+	{
+		vTaskDelay(pdMS_TO_TICKS(10));	
+		any_key_pressed = true;         
+		if(__K)
+		{
+			dp("K键");
+			if(is_gotosetphone())//要设置电话号码
+			{
+				next_ui = SET_PHONE_UI;
+				break;
+			}else if(is_gotosettempe())//要设置报警温度
+			{
+				next_ui = SET_TEMP_UI;
+				break;
+			}else if(is_gotowindowops() == true)
+			{
+				next_ui = WINDOW_OPS_UI;
+				break;
+			}else if(is_gotodustwinops() == true)
+			{
+				next_ui = DUST_WIN_OPS_UI;
+				break;
+			}
+		}else if(__T)
+		{
+			dp("T键");
+			//上一个选项
+			ui_menuprev();
+		}else if(__B)
+		{
+			dp("B键");
+			//下一个选项
+			ui_menunext();  
+		}else if(__C)
+		{
+			dp("C键");
+			dp("键盘上锁");
+			next_ui = KEYBOARD_LOCKED_UI;
+			break;//返回到键盘上锁之前的状态
+		}else 
+			any_key_pressed = false;         
+		if(any_key_pressed)	
+			feed_dog_for_secure_state();
+	}
+	return next_ui;
+}
+static uint8_t xxxx_dustwinops_ui(void)
+{
+	bool any_key_pressed;
+	uint8_t next_ui = DUST_WIN_OPS_UI;
+	//进入防雾霾窗纱操作界面
+	ui_dustwinops();
+	while(1)
+	{
+		vTaskDelay(pdMS_TO_TICKS(10));
+		any_key_pressed = false;         							 
+		if(__L)//L键
+		{
+			dp("箭头前指");
+			ui_dustwinopsprev();
+			if(get_dustwinstatus() != DUSTWIN_CLOSE)	
+			{
+				/*关窗操作*/
+				close_preventdustwin(0);
+				while(!(__READ_L))
+				{	
+					feed_dog_for_secure_state();
+					/*等待开窗完成*/
+					if(get_dustwinstatus() == DUSTWIN_CLOSE)	
+					{	
+						taskENTER_CRITICAL();
+						stop_preventdustwin();
+						taskEXIT_CRITICAL();							
+						break;
+					}
+					vTaskDelay(pdMS_TO_TICKS(10));
+//										dp("L键未释放 val = %d val2 = %d",val,val2);
+				}
+				dp("停止窗户.......................\r\n");
+				taskENTER_CRITICAL();
+				stop_preventdustwin();
+				taskEXIT_CRITICAL();		
+			}					
+		}else if(__R)
+		{
+			dp("箭头后指");
+			ui_dustwinopsnext();
+			if(get_dustwinstatus() != DUSTWIN_OPEN)
+			{
+				/*开窗操作*/
+				open_preventdustwin(0);
+				while(!(__READ_R))
+				{	
+					feed_dog_for_secure_state();
+					/*等待开窗完成*/
+					if(get_dustwinstatus() == DUSTWIN_OPEN)	
+					{
+						taskENTER_CRITICAL();
+						stop_preventdustwin();
+						taskEXIT_CRITICAL();
+						break;
+					}
+					vTaskDelay(pdMS_TO_TICKS(10));
+					//dp("R键未释放 val = %d val2 = %d",val,val2);
+				}
+				dp("停止窗户.......................\r\n");
+				taskENTER_CRITICAL();
+				stop_preventdustwin();
+				taskEXIT_CRITICAL();							
+			}						
+			
+		}else if(__F)
+		{
+			//返回上一级菜单
+			dp("返回上一级菜单");
+			next_ui = MENU_UI;
+			break;
+		}else if(__C)
+		{
+			//键盘上锁
+			next_ui = KEYBOARD_LOCKED_UI;
+			break;
+		}else 
+			any_key_pressed = false;         
+		if(any_key_pressed)	
+			feed_dog_for_secure_state();
+	}
+	return next_ui;
+}
+static uint8_t xxxx_windowsops_ui(void)
+{
+	bool any_key_pressed;
+	uint8_t next_ui = WINDOW_OPS_UI;
+	dp("进入设置窗户开关界面");
+	ui_windowops();
+	while(1)
+	{
+		vTaskDelay(pdMS_TO_TICKS(10));
+		any_key_pressed = true;         
+		if(__L)//L键，箭头左指
+		{	
+			ui_windowopsprev();
+			if(get_windowstatus() != WIN_CLOSE)	
+			{
+				/*关窗操作*/
+				close_window();
+				while(!(__READ_L))
+				{	
+					feed_dog_for_secure_state();
+					/*等待开窗完成*/
+					if(get_windowstatus() == WIN_CLOSE)	
+					{	
+						taskENTER_CRITICAL();
+						stop_window();
+						taskEXIT_CRITICAL();							
+						break;
+					}
+					vTaskDelay(pdMS_TO_TICKS(10));
+					dp("L键未释放 val = %d val2 = %d",0,0);
+				}
+				dp("停止窗户.......................\r\n");
+				taskENTER_CRITICAL();
+				stop_window();
+				taskEXIT_CRITICAL();		
+			}									
+		}
+		else if(__R)//R键，箭头右指示 
+		{
+			ui_windowopsnext();
+			if(get_windowstatus() != WIN_OPEN)
+			{
+				/*开窗操作*/
+				open_window();
+				while(!(__READ_R))
+				{	
+					feed_dog_for_secure_state();
+					/*等待开窗完成*/
+					if(get_windowstatus() == WIN_OPEN)	
+					{
+						taskENTER_CRITICAL();
+						stop_window();
+						taskEXIT_CRITICAL();
+						break;
+					}
+					vTaskDelay(pdMS_TO_TICKS(10));
+					dp("R键未释放 val = %d val2 = %d",0,0);
+				}
+				dp("停止窗户.......................\r\n");
+				taskENTER_CRITICAL();
+				stop_window();
+				taskEXIT_CRITICAL();							
+			}						
+		}
+		else if(__F)//F键，返回上一级菜单
+		{
+			dp("进入主菜单界面");
+			next_ui = MENU_UI;
+			break;
+		}else if(__C)//C键，退出设置
+		{
+			next_ui = KEYBOARD_LOCKED_UI;
+			break;
+		}else 
+			any_key_pressed = false;         
+		if(any_key_pressed)	
+			feed_dog_for_secure_state();
+	}           
+	return next_ui;
+}
+static uint8_t xxxx_setphone_ui(void)
+{
+	bool any_key_pressed;
+	uint8_t next_ui;
+	//设置之前用一个临时号码变量
+	strncpy((char*)tmpalarmphone,(char*)alarmphone,12);
+	strncpy((char*)tmpalarmtempe,(char*)alarmtempe,5);
+	tmpalarmphone[11]=0;
+	tmpalarmtempe[4]=0;
+	//进入设置电话号码界面
+	ui_setphone();
+	dp("电话号码设置界面");
+	////static bool break2 = false;
+	while(1)
+	{
+		vTaskDelay(pdMS_TO_TICKS(10));
+		any_key_pressed = true;         
+		if(__T)
+		{
+			ui_tip_user(6,3,"<unsaved>"); 
+			dp("T键");
+			//号码位加一
+			ui_setphoneup();
+		}else if(__B)
+		{
+			ui_tip_user(6,3,"<unsaved>"); 
+			dp("B键");
+			//号码位减一
+			ui_setphonedown();
+		}else if(__L)
+		{	
+			dp("L键");
+			//光标左移一位
+			ui_setphoneprev();
+		}else if(__R)
+		{
+			
+			dp("R键");
+			//光标右移一位
+			ui_setphonenext();
+		}else if(__F)
+		{
+			dp("F键");
+			//返回上一级菜单
+			next_ui = MENU_UI;
+			break;
+		}else if(__K)
+		{
+			dp("K键");
+			dp("更新报警号码");
+			//显示正在更新电话号码界面
+			ui_updatephone();
+			static bool is_update_ok;
+			tmpalarmphone[11] = 0;
+			tmpalarmtempe[4] = 0;
+			//更新电话号码程序
+			update_alarm_phone_tempe();
+			is_update_ok = true;/*	总是认为更新成功	*/
+			
+			//进入设置电话号码界面
+			ui_setphone();
+			dp("电话号码设置界面");
+			
+			if(is_update_ok)
+			{
+				//保存回原变量
+				strncpy((char*)alarmphone,(char*)tmpalarmphone,12);
+				
+				dp("设置报警号码为%s\r\n",alarmphone);
+				ui_tip_user(6,3,"<saved>"); 
+			}else
+			{
+				vTaskDelay(pdMS_TO_TICKS(50));
+				ui_tip_user(6,3,"<try later!>"); 
+			}
+			
+		}else if(__C)
+		{	
+			dp("C键");
+			dp("上锁");
+			next_ui = KEYBOARD_LOCKED_UI;
+			break;
+		}else
+			any_key_pressed = false;
+		if(any_key_pressed)
+			feed_dog_for_secure_state();
+	}
+	return next_ui;
+}
+static uint8_t xxxx_settemp_ui(void)
+{
+	bool any_key_pressed;
+	uint8_t next_ui = SET_TEMP_UI;
+	//设置之前用一个临时号码变量
+	strncpy((char*)tmpalarmphone,(char*)alarmphone,12);
+	strncpy((char*)tmpalarmtempe,(char*)alarmtempe,5);
+	tmpalarmphone[11]=0;
+	tmpalarmtempe[4]=0; 
+	//printf("447::tmpalarmtempe::%s\r\n", tmpalarmtempe);
+	dp("报警温度设置界面");
+	//进入设置报警温度界面
+	ui_settempe();
+	//printf("451::tmpalarmtempe::%s\r\n", tmpalarmtempe);
+	////static bool break2 = false;
+	while(1)
+	{
+		vTaskDelay(pdMS_TO_TICKS(10));
+		any_key_pressed = true;         
+		if(__T)
+		{
+			ui_tip_user(6,3,"<unsaved>"); 
+			dp("T键");
+			//号码位加一
+			ui_settempeup();
+		}else if(__B)
+		{
+			ui_tip_user(6,3,"<unsaved>"); 
+			dp("B键");
+			//号码位减一
+			ui_settempedown();
+		}else if(__L)
+		{
+			
+			dp("L键");
+			//光标左移一位
+			ui_settempeprev();
+		}else if(__R)
+		{
 
+			dp("R键");
+			//光标右移一位
+			ui_settempenext();
+		}else if(__F)
+		{
+			dp("F键");
+			//返回上一级菜单
+			next_ui = MENU_UI;
+			break;
+		}else if(__C)
+		{
+			dp("C键");
+			dp("上锁");
+			next_ui = KEYBOARD_LOCKED_UI;
+			break;
+		}else if(__K)
+		{
+			dp("K键");
+			dp("更新报警温度");
+			//显示正在更新报警温度的界面
+			ui_updatetempe();
+			tmpalarmphone[11] = 0;
+			tmpalarmtempe[4] = 0;
+			static bool is_update_ok;
+			//更新报警温度到flash中保存						
+			update_alarm_phone_tempe();
+			is_update_ok = true;/*	总是认为更新成功	*/									
+			//进入设置报警温度界面
+			dp("进入报警温度设置界面");
+			ui_settempe();
+		
+			if(is_update_ok)
+			{
+				//保存新值
+				strncpy((char*)alarmtempe,(char*)tmpalarmtempe,5);
+				static double tmp;
+				sscanf((char*)alarmtempe,"%lf",&tmp);
+				//更新报警温度程序
+				set_alarm_tempe(tmp*10);
+				dp("设置报警温度为：%lf",tmp);
+				ui_tip_user(6,3,"<saved>"); 
+			}else
+			{
+				vTaskDelay(pdMS_TO_TICKS(50));
+				ui_tip_user(6,3,"<try later!>"); 
+			}
+		}else       
+		{
+			any_key_pressed = false;         
+		}
+		if(any_key_pressed)
+		{
+			feed_dog_for_secure_state();
+		}
+	}
+	return next_ui;
+}

@@ -398,11 +398,6 @@
               <FilePath>..\SMART_WINDOW_USER\read_tempehumid_task.c</FilePath>
             </File>
             <File>
-              <FileName>scankey_task.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\SMART_WINDOW_USER\scankey_task.c</FilePath>
-            </File>
-            <File>
               <FileName>stealing_task.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\SMART_WINDOW_USER\stealing_task.c</FilePath>
@@ -416,6 +411,11 @@
               <FileName>main_task.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\SMART_WINDOW_USER\main_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>scankey_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\SMART_WINDOW_USER\scankey_task.c</FilePath>
             </File>
           </Files>
         </Group>
